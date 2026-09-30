@@ -22,7 +22,7 @@ dsh 中思考强度是每个模型的**声明式能力**，不是全局开关：
 
 ## 安装
 
-需要 0.1.7-rc.2 及以上、实测 0.2.0-rc.1 的安装（dsh-base 挂载 llm/settings/Typert seam）。在应用内 **设置 → 插件** 里以 tarball 规格 `G:\dsh-build\dist\dsh-reasoning-setup-0.1.0.tgz` 安装后重启；或把 profile 的 `dsh.profile.bundles` 追加 `dsh-reasoning-setup`。插件不声明任何依赖，运行时通过 profile 的模块回退链接复用宿主已加载的 harness 包。
+需要 0.1.7-rc.2 及以上、实测 0.2.0-rc.1 的安装（dsh-base 挂载 llm/settings/Typert seam）。在应用内 **设置 → 插件** 里以该 tarball 的路径（先 `pnpm pack` 生成）安装并重启；或把 profile 的 `dsh.profile.bundles` 追加 `dsh-reasoning-setup`。插件不声明任何依赖，运行时通过 profile 的模块回退链接复用宿主已加载的 harness 包。
 
 ## 布局
 
@@ -48,3 +48,11 @@ host 半边导入 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-settings`、`@deepse
 - 只能编辑经 `llm-pi-ai` 设置文档配置的路由；其它适配器（如 deepseek-official）的模型只读展示。
 - 「移除声明」只移除本页写入的 `reasoningEfforts` / `compat.thinkingFormat`，不会把目录模型改成 `reasoningEfforts: false`（剥离目录声明的思考能力不属于本页的编辑动作）。
 - 档位与格式词表镜像自 `dsh-llm-pi-ai/src/catalog.ts`（该包未导出）；`pnpm run verify` 与 harness 源码比对，升级 harness 后请重跑。
+
+## 许可证
+
+本项目以 MIT 许可证发布，见 [LICENSE](LICENSE)。
+
+档位词表与校验规则镜像自 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（MIT License, Copyright (c) 2026 DeepSeek）的 `packages/llm/llm-pi-ai/src/catalog.ts`，归属声明见 [NOTICE](NOTICE)。
+
+本项目与 DeepSeek 无从属、背书或赞助关系。「DeepSeek」为其各自所有者的商标，此处仅为描述性使用。
