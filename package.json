@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "prepare": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs",
     "verify": "node scripts/build.mjs && node scripts/verify.mjs && node scripts/client-smoke.mjs",
     "client-smoke": "node scripts/client-smoke.mjs"
   },

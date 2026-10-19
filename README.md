@@ -26,14 +26,14 @@ dsh 中思考强度是每个模型的**声明式能力**，不是全局开关：
 
 - **插件市场一键安装**：在 dsh 的插件市场（dshmarket）中搜索 `dsh-reasoning-setup`，点击安装并重启。市场条目指向下面那个已含构建产物的 tarball，安装时不需要本地工具链。
 - **预构建 tarball**（离线/手动安装）：[dsh-reasoning-setup.tgz](https://github.com/Ayelsh/reasoning-setup/releases/latest/download/dsh-reasoning-setup.tgz)，在应用内 **设置 → 插件** 里选择该文件安装并重启。该地址始终指向最新 release，里面的 `lib/` 已构建好。
-- **源码安装**（需要安装时的构建步骤）：
+- **源码安装**：
 
   ```sh
   dsh plugin --profile <profile> add github:Ayelsh/reasoning-setup
   ```
 
-  包的 `prepare` 脚本会在安装时执行 `node scripts/build.mjs` 生成 `lib/`，所以需要能安装 devDependencies（`esbuild`）。
-- **profile bundle 方式**：把 `dsh.profile.bundles` 追加 `dsh-reasoning-setup`（`lib/` 已由上述任一方式就位时）。
+  构建产物 `lib/` 已随仓库提交（见 `.gitignore` 注释），因此源码安装不需要本地构建工具链，也不用 `prepare` 在安装时跑 esbuild。
+- **profile bundle 方式**：把 `dsh.profile.bundles` 追加 `dsh-reasoning-setup`（`lib/` 已随包提供）。
 
 插件本身不声明运行时依赖，运行时通过 profile 的模块回退链接复用宿主已加载的 harness 包。
 
@@ -54,7 +54,7 @@ pnpm run build      # 写 lib/index.js, lib/typert.js, lib/client.js
 pnpm run verify     # build + 对照 deepseek-harness 检验 + 浏览器冒烟
 ```
 
-`prepare` 与 `build` 相同，安装 git 依赖（`github:Ayelsh/reasoning-setup`）时会自动触发，因此源码安装得到的包同样带 `lib/`。
+构建产物 `lib/`（`index.js`、`typert.js`、`client.js`）是提交进仓库的：`github:` 源码安装直接打包仓库内容，所以改动源码后请重跑 `pnpm run build` 并一并提交 `lib/`。`prepack` 与 `build` 相同，只用于 `pnpm pack` / 发布前刷新产物，安装时不会执行。
 
 host 半边导入 `@deepseek-ai/cordis`、`@deepseek-ai/dsh-settings`、`@deepseek-ai/dsh-typert-protocol`、`@deepseek-ai/schemastery`（类型另有 `dsh-llm`、`dsh-llm-pi-ai`），全部在宿主应用的依赖闭包里，模块回退链接会解析到运行进程已加载的副本。
 
