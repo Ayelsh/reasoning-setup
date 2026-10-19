@@ -21,7 +21,9 @@
     "build": "node scripts/build.mjs",
     "prepack": "node scripts/build.mjs",
     "verify": "node scripts/build.mjs && node scripts/verify.mjs && node scripts/client-smoke.mjs",
-    "client-smoke": "node scripts/client-smoke.mjs"
+    "client-smoke": "node scripts/client-smoke.mjs",
+    "preview": "node scripts/preview.mjs",
+    "preview:shots": "node scripts/preview-shots.mjs"
   },
   "dsh": {
     "bundle": {

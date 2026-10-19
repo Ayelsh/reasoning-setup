@@ -43,8 +43,19 @@ dsh 中思考强度是每个模型的**声明式能力**，不是全局开关：
 |---|---|
 | `src/host/` | `reasoningSetup` 服务：`scan()` 连接 LLM runtime 的 provider/model 枚举与 llm-pi-ai 设置文档；`apply()` 校验草稿后经 `ctx.settings.mutate` 写入。`scan.ts` 是纯函数（表读取、声明定位、校验镜像、op 构建）。 |
 | `src/wire/` | 两个 Typert 面，按生成器输出形状手写（仓库生成器需要 workspace 的 ts.Program，out-of-tree 包没有）。`typert-host.js` 是 loader 从 `./typert` 导出注册的清单；`typert-remote-client.js` 是浏览器侧经 `ctx.remote.$mount` 挂载的贡献。 |
-| `src/client/` | 设置页浏览器半边：注册 `settings.section` 插槽、双语字典、自注入样式表。 |
-| `scripts/` | `build.mjs`（esbuild 三产物 + 自检）、`verify.mjs`（对照 harness 校验：导入解析、loader 清单校验、档位/格式词表与 `llm-pi-ai/src/catalog.ts` 的门表比对、scan 规则夹具）、`client-smoke.mjs`（stub shell 物化浏览器包）。 |
+| `src/client/` | 设置页浏览器半边：注册 `settings.section` 插槽、双语字典、自注入样式表。界面是 Liquid Glass 材质：环境光场 + 浮起工具栏 + 每个 Provider 一张玻璃卡，行内不再叠玻璃。 |
+| `scripts/` | `build.mjs`（esbuild 三产物 + 自检）、`verify.mjs`（对照 harness 校验：导入解析、loader 清单校验、档位/格式词表与 `llm-pi-ai/src/catalog.ts` 的门表比对、scan 规则夹具）、`client-smoke.mjs`（stub shell 物化浏览器包）、`preview.mjs` / `preview-shots.mjs`（截图夹具，见下）。 |
+
+## 截图夹具
+
+材质的判断只能靠看渲染结果，所以仓库里带了一套可复跑的夹具：它把真实组件挂进 jsdom，按设置面板的真实几何（800px 面板、188px 导航、`.options` 滚动列，顶部零内边距）输出独立 HTML，再用 Chromium 逐场景截图。
+
+```sh
+pnpm run preview                                   # 写 preview/*.html（明暗两套 + 忙碌背景）
+PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright pnpm run preview:shots   # 写 preview/shots/*.png
+```
+
+场景覆盖 ready / loading / error / empty / editor / filtered / notice / press，以及滚动后的吸顶、忙碌背景、`prefers-reduced-transparency`、`prefers-contrast`、`prefers-reduced-motion` 三种偏好极值，全部明暗各一张。`preview/` 是生成物，不入库；改材质后重跑这两条命令并逐张看。
 
 ## 构建
 

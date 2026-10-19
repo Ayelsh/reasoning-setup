@@ -6,17 +6,18 @@
  * through the `reasoningSetup` namespace, so the settings document is never
  * read or written by the renderer.
  *
- * Designed with Apple Design principles:
- * - Inset Grouped layout matching macOS System Settings.
- * - Fluid status badges, interactive model cards, and tactile feedback.
- * - Smooth spring-like open/close transitions for inline editors.
+ * Layout follows Apple's Liquid Glass material model: a sticky glass bar that
+ * floats above the content and carries the page's state, one glass surface
+ * per provider holding flat hairline-divided rows, and a solid recessed well
+ * for the inline editor (a form never sits on the blur). Selection is one
+ * pill that travels between filters; nothing cross-fades.
  *
  * @module dsh-reasoning-setup/client/EffortPanel
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { DeclaredLevels, ReasoningEffortEdit, ReasoningModelView, ReasoningProviderView, ReasoningScanReport } from '../host/types.ts'
+import type { DeclaredLevels, ReasoningEffortEdit, ReasoningModelView, ReasoningScanReport } from '../host/types.ts'
 import type { EffortLocaleKey } from './locales.ts'
 import { styles } from './styles.ts'
 
@@ -45,6 +46,16 @@ interface EditorState {
   readonly boxes: Readonly<Record<string, LevelDraft>>
   readonly format: string
 }
+
+/** Which models the page is showing. */
+type Filter = 'all' | 'missing' | 'supported'
+
+/** The filters, in segment order. */
+const FILTERS: readonly { readonly id: Filter; readonly key: EffortLocaleKey }[] = [
+  { id: 'all', key: 'filterAll' },
+  { id: 'missing', key: 'filterMissing' },
+  { id: 'supported', key: 'filterSupported' },
+]
 
 /**
  * One error's user-facing text.
@@ -81,6 +92,18 @@ function declaredBoxes(levels: readonly string[], declared: DeclaredLevels): Rea
   }]))
 }
 
+/**
+ * Whether one model passes the active filter.
+ * @param model - the model row.
+ * @param filter - the active filter.
+ * @returns whether the row is shown.
+ */
+function matches(model: ReasoningModelView, filter: Filter): boolean {
+  if (filter === 'missing') return !model.hasReasoning
+  if (filter === 'supported') return model.hasReasoning
+  return true
+}
+
 /** The thinking-effort setup page. */
 export function EffortPanel(props: EffortPanelProps): ReactNode {
   const { t, loadScan, applyEdit } = props
@@ -91,6 +114,8 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
+  const segmentRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const rescan = useCallback(async () => {
     setStatus('loading')
@@ -191,8 +216,10 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
       })
       setEditor(undefined)
       setEditError(null)
-      setNotice(t('savedNotice'))
+      // The rescan clears the notice as it starts, so the confirmation must be
+      // raised only after the fresh document has landed.
       await rescan()
+      setNotice(t('savedNotice'))
     } catch (cause) {
       setEditError(t('editError', { message: message(cause) }))
     } finally {
@@ -208,13 +235,31 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
       await applyEdit({ kind: 'remove', provider: editor.provider, model: editor.model.id })
       setEditor(undefined)
       setEditError(null)
-      setNotice(t('savedNotice'))
       await rescan()
+      setNotice(t('savedNotice'))
     } catch (cause) {
       setEditError(t('editError', { message: message(cause) }))
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * Move the filter with the keyboard: arrows step, Home/End jump.
+   * @param event - the key event on a segment button.
+   * @param index - that button's index.
+   */
+  const moveFilter = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    const last = FILTERS.length - 1
+    const next = event.key === 'ArrowRight' ? (index === last ? 0 : index + 1)
+      : event.key === 'ArrowLeft' ? (index === 0 ? last : index - 1)
+        : event.key === 'Home' ? 0
+          : event.key === 'End' ? last
+            : -1
+    if (next < 0) return
+    event.preventDefault()
+    setFilter(FILTERS[next].id)
+    segmentRefs.current[next]?.focus()
   }
 
   const missing = report?.providers
@@ -223,140 +268,244 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
     .filter(model => !model.hasReasoning)
     .length ?? 0
 
+  const editable = report?.providers.some(provider => provider.editable) ?? false
+  const tone = status === 'error' ? 'error'
+    : status === 'loading' ? 'idle'
+      : missing > 0 ? 'warn' : 'success'
+  const subtitle = status === 'loading' ? t('scanPending')
+    : status === 'error' ? t('scanError', { message: error ?? '' })
+      : report === undefined || report.providers.length === 0 ? t('noProviders')
+        : missing > 0 ? t('summaryMissing', { count: missing }) : t('summaryNone')
+  const filterIndex = Math.max(0, FILTERS.findIndex(entry => entry.id === filter))
+  const visible = (report?.providers ?? [])
+    .map(provider => ({ provider, models: provider.models.filter(model => matches(model, filter)) }))
+    .filter(entry => entry.models.length > 0)
+
   return (
     <div className={styles.page}>
+      <div className={styles.field} aria-hidden="true" />
+
+      <div className={styles.hero} data-busy={saving || status === 'loading' ? 'true' : 'false'}>
+        <div className={styles.heroMain}>
+          <span className={styles.heroOrb} data-tone={tone} aria-hidden="true" />
+          <div className={styles.heroText}>
+            <span className={styles.heroTitle}>{t('nav')}</span>
+            <span className={styles.heroSub} title={subtitle}>{subtitle}</span>
+          </div>
+        </div>
+        <div className={styles.heroActions}>
+          <div
+            className={styles.segment}
+            role="tablist"
+            aria-label={t('filterLabel')}
+            data-index={filterIndex}
+          >
+            <span className={styles.segmentPill} aria-hidden="true" />
+            {FILTERS.map((entry, index) => (
+              <button
+                key={entry.id}
+                ref={element => { segmentRefs.current[index] = element }}
+                type="button"
+                role="tab"
+                className={styles.segmentItem}
+                data-active={filter === entry.id ? 'true' : 'false'}
+                aria-selected={filter === entry.id}
+                tabIndex={filter === entry.id ? 0 : -1}
+                disabled={!editable && entry.id !== 'all'}
+                onClick={() => { setFilter(entry.id) }}
+                onKeyDown={event => { moveFilter(event, index) }}
+              >
+                {t(entry.key)}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={status === 'loading'}
+            onClick={() => { void rescan() }}
+          >
+            {t('refresh')}
+          </Button>
+        </div>
+        <span className={styles.heroProgress} aria-hidden="true" />
+      </div>
+
       <p className={styles.pageHint}>{t('pageHint')}</p>
-      {status === 'loading' && <p className={styles.scanStatus}>{t('scanPending')}</p>}
+
+      {status === 'loading' && (
+        <div className={styles.skeleton} role="status" aria-label={t('scanPending')}>
+          <div className={styles.skeletonCard}>
+            <span className={styles.skeletonLine} style={{ width: '38%' }} />
+            <span className={styles.skeletonLine} style={{ width: '72%' }} />
+            <span className={styles.skeletonLine} style={{ width: '58%' }} />
+          </div>
+          <div className={styles.skeletonCard}>
+            <span className={styles.skeletonLine} style={{ width: '46%' }} />
+            <span className={styles.skeletonLine} style={{ width: '66%' }} />
+          </div>
+        </div>
+      )}
+
       {status === 'error' && (
-        <div className={styles.scanError}>
+        <div className={styles.bannerError} role="alert">
           <span>{t('scanError', { message: error ?? '' })}</span>
           <Button variant="outline" size="sm" onClick={() => { void rescan() }}>{t('retry')}</Button>
         </div>
       )}
-      {notice !== null && status === 'ready' && <p className={styles.scanStatus}>{notice}</p>}
-      {status === 'ready' && report !== undefined && (
-        <>
-          <div className={styles.summaryBar}>
-            <span className={styles.statusDot} />
-            {report.providers.length === 0
-              ? <span className={styles.summaryOk}>{t('noProviders')}</span>
-              : missing > 0
-                ? <span className={styles.summaryMissing}>{t('summaryMissing', { count: missing })}</span>
-                : <span className={styles.summaryOk}>{t('summaryNone')}</span>}
-          </div>
-          {report.providers.map((provider: ReasoningProviderView) => (
-            <section className={styles.group} key={provider.id}>
-              <div className={styles.groupHead}>
-                <span className={styles.groupTitle}>{provider.name}</span>
-                <span className={styles.groupId}>{provider.id}</span>
-                {provider.editable
-                  ? null
-                  : <span className={`${styles.groupBadge} ${styles.groupBadgeReadonly}`}>{t('providerReadonly')}</span>}
-              </div>
-              {provider.note === undefined ? null : (
-                <p className={styles.groupNote}>{t('routeError', { message: provider.note })}</p>
-              )}
-              <div className={styles.groupCard}>
-                {provider.models.map((model: ReasoningModelView) => {
-                  const isEditing = editor?.provider === provider.id && editor.model.id === model.id
-                  return (
-                    <div className={styles.modelItem} key={model.id}>
-                      <div className={`${styles.modelRow}${isEditing ? ` ${styles.modelRowActive}` : ''}`}>
-                        <span className={styles.modelName} title={model.id}>{model.name}</span>
-                        <span className={styles.modelMeta}>
-                          {model.note === undefined ? null : (
-                            <span className={styles.chip} title={model.note}>{t('modelNote', { message: model.note })}</span>
-                          )}
-                          {model.hasReasoning
-                            ? (
-                              <span className={`${styles.chip} ${styles.chipOk}`}>
-                                {t('modelSupported', { levels: model.efforts.join(' / ') })}
-                              </span>
-                            )
-                            : <span className={`${styles.chip} ${styles.chipMissing}`}>{t('modelMissing')}</span>}
-                          {model.defaultEffort === undefined ? null : (
-                            <span className={`${styles.chip} ${styles.chipDefault}`}>{t('modelDefault', { level: model.defaultEffort })}</span>
-                          )}
-                          <Button
-                            variant={isEditing ? 'ghost' : 'outline'}
-                            size="sm"
-                            disabled={!model.editable || saving}
-                            onClick={() => { isEditing ? closeEditor() : openEditor(provider.id, model) }}
-                          >
-                            {model.declaredLevels === undefined ? t('edit') : t('editActive')}
-                          </Button>
-                        </span>
-                      </div>
-                      {isEditing && (
-                        <div className={styles.editor}>
-                          <div className={styles.editorHead}>
-                            <span className={styles.groupTitle}>{t('editorTitle', { model: model.name })}</span>
-                          </div>
-                          <p className={styles.editorHint}>{t('editorHint')}</p>
-                          {model.declaredLevels === undefined ? null : (
-                            <p className={styles.editorHint}>{t('editorDeclaredHint')}</p>
-                          )}
-                          <div className={styles.levelTable}>
-                            {report.levels.map(level => {
-                              const box = editor.boxes[level]
-                              return (
-                                <label className={styles.levelRow} key={level}>
-                                  <input
-                                    type="checkbox"
-                                    className={styles.levelCheck}
-                                    checked={box?.on ?? false}
-                                    onChange={(event) => { toggleLevel(level, event.currentTarget.checked) }}
-                                  />
-                                  <span className={styles.levelName}>{level}</span>
-                                  <input
-                                    type="text"
-                                    className={styles.levelWire}
-                                    value={box?.wire ?? ''}
-                                    disabled={!(box?.on ?? false) || saving}
-                                    placeholder={level === 'off' ? '—' : level}
-                                    onChange={(event) => { editWire(level, event.currentTarget.value) }}
-                                  />
-                                </label>
-                              )
-                            })}
-                          </div>
-                          <label className={styles.formatRow}>
-                            <span>{t('formatLabel')}</span>
-                            <select
-                              className={styles.formatSelect}
-                              value={editor.format}
-                              disabled={saving}
-                              onChange={(event) => {
-                                const value = event.currentTarget.value
-                                setEditor(current => current === undefined ? undefined : { ...current, format: value })
-                              }}
-                            >
-                              <option value="">{t('formatInherit')}</option>
-                              {report.formats.map(format => <option key={format} value={format}>{format}</option>)}
-                            </select>
-                          </label>
-                          {editError === null ? null : <p className={styles.editorError}>{editError}</p>}
-                          <div className={styles.editorActions}>
-                            <Button variant="primary" size="sm" disabled={saving} onClick={() => { void save() }}>
-                              {saving ? t('saving') : t('save')}
-                            </Button>
-                            <Button variant="ghost" size="sm" disabled={saving} onClick={closeEditor}>{t('cancel')}</Button>
-                            {model.declaredLevels === undefined && model.declaredFormat === undefined ? null : (
-                              <Button variant="outline" size="sm" disabled={saving} onClick={() => { void remove() }}>
-                                {t('removeDeclared')}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          ))}
-        </>
+
+      {notice !== null && status === 'ready' && (
+        <p className={styles.bannerNotice} role="status">{notice}</p>
       )}
+
+      {status === 'ready' && report !== undefined && report.providers.length === 0 && (
+        <div className={styles.empty}>
+          <span className={styles.emptyTitle}>{t('emptyTitle')}</span>
+          <span className={styles.emptyHint}>{t('emptyHint')}</span>
+        </div>
+      )}
+
+      {status === 'ready' && report !== undefined && report.providers.length > 0 && visible.length === 0 && (
+        <div className={styles.empty}>
+          <span className={styles.emptyTitle}>{t('emptyFiltered')}</span>
+          <span className={styles.emptyHint}>{t('emptyFilteredHint')}</span>
+        </div>
+      )}
+
+      {status === 'ready' && report !== undefined && report.providers.length > 0 && visible.map(entry => (
+        <section className={styles.group} key={entry.provider.id}>
+          <div className={styles.groupHead}>
+            <span className={styles.groupTitle}>{entry.provider.name}</span>
+            <span className={styles.groupCount}>{entry.models.length}</span>
+            <span className={styles.groupId}>{entry.provider.id}</span>
+            {entry.provider.editable ? null : <span className={styles.groupBadge}>{t('providerReadonly')}</span>}
+          </div>
+          {entry.provider.note === undefined ? null : (
+            <p className={styles.groupNote}>{t('routeError', { message: entry.provider.note })}</p>
+          )}
+          <div className={styles.card}>
+            {entry.models.map((model: ReasoningModelView) => {
+              const isEditing = editor?.provider === entry.provider.id && editor.model.id === model.id
+              const levels = report.levels.map(level => (
+                <span
+                  key={level}
+                  className={styles.ladderBar}
+                  data-on={model.efforts.includes(level) ? 'true' : 'false'}
+                />
+              ))
+              return (
+                <div className={styles.modelItem} key={model.id}>
+                  <div className={`${styles.modelRow}${isEditing ? ` ${styles.modelRowActive}` : ''}`}>
+                    <span className={styles.modelLead}>
+                      <span className={styles.modelName} title={model.id}>{model.name}</span>
+                      <span className={styles.modelId}>{model.id}</span>
+                    </span>
+                    <span className={styles.modelMeta}>
+                      <span
+                        className={styles.ladder}
+                        title={t('modelSupported', { levels: model.efforts.join(' / ') })}
+                        aria-label={t('modelSupported', { levels: model.efforts.join(' / ') })}
+                      >
+                        {levels}
+                      </span>
+                      {model.declaredLevels === undefined ? null : (
+                        <span className={styles.chipDeclared}>{t('modelDeclared')}</span>
+                      )}
+                      {model.hasReasoning ? null : (
+                        <span className={styles.chipMissing}>{t('modelMissing')}</span>
+                      )}
+                      {model.defaultEffort === undefined ? null : (
+                        <span className={styles.chipDefault}>{t('modelDefault', { level: model.defaultEffort })}</span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={styles.rowAction}
+                        disabled={!model.editable || saving}
+                        onClick={() => { isEditing ? closeEditor() : openEditor(entry.provider.id, model) }}
+                      >
+                        {model.declaredLevels === undefined ? t('edit') : t('editActive')}
+                      </Button>
+                    </span>
+                  </div>
+                  {model.note === undefined ? null : (
+                    <p className={styles.modelNote}>{t('modelNote', { message: model.note })}</p>
+                  )}
+                  {isEditing && (
+                    <div className={styles.editor}>
+                      <div className={styles.editorHead}>
+                        <span className={styles.editorTitle}>{t('editorTitle', { model: model.name })}</span>
+                      </div>
+                      <p className={styles.editorHint}>{t('editorHint')}</p>
+                      {model.declaredLevels === undefined ? null : (
+                        <p className={styles.editorHint}>{t('editorDeclaredHint')}</p>
+                      )}
+                      <div className={styles.levelHead} aria-hidden="true">
+                        <span />
+                        <span>{t('levelColumn')}</span>
+                        <span>{t('wireColumn')}</span>
+                      </div>
+                      <div className={styles.levelTable}>
+                        {report.levels.map(level => {
+                          const box = editor.boxes[level]
+                          const on = box?.on ?? false
+                          return (
+                            <label className={styles.levelRow} key={level} data-on={on ? 'true' : 'false'}>
+                              <input
+                                type="checkbox"
+                                className={styles.levelCheck}
+                                checked={on}
+                                onChange={(event) => { toggleLevel(level, event.currentTarget.checked) }}
+                              />
+                              <span className={styles.levelName}>{level}</span>
+                              <input
+                                type="text"
+                                className={styles.levelWire}
+                                value={box?.wire ?? ''}
+                                disabled={!on || saving}
+                                placeholder={level === 'off' ? '—' : level}
+                                onChange={(event) => { editWire(level, event.currentTarget.value) }}
+                              />
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <label className={styles.formatRow}>
+                        <span>{t('formatLabel')}</span>
+                        <select
+                          className={styles.formatSelect}
+                          value={editor.format}
+                          disabled={saving}
+                          onChange={(event) => {
+                            const value = event.currentTarget.value
+                            setEditor(current => current === undefined ? undefined : { ...current, format: value })
+                          }}
+                        >
+                          <option value="">{t('formatInherit')}</option>
+                          {report.formats.map(format => <option key={format} value={format}>{format}</option>)}
+                        </select>
+                      </label>
+                      {editError === null ? null : <p className={styles.editorError}>{editError}</p>}
+                      <div className={styles.editorActions}>
+                        <Button variant="primary" size="sm" disabled={saving} onClick={() => { void save() }}>
+                          {saving ? t('saving') : t('save')}
+                        </Button>
+                        <Button variant="ghost" size="sm" disabled={saving} onClick={closeEditor}>{t('cancel')}</Button>
+                        <span className={styles.pushRight} />
+                        {model.declaredLevels === undefined && model.declaredFormat === undefined ? null : (
+                          <Button variant="outline" size="sm" disabled={saving} onClick={() => { void remove() }}>
+                            {t('removeDeclared')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }
