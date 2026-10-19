@@ -6,6 +6,11 @@
  * through the `reasoningSetup` namespace, so the settings document is never
  * read or written by the renderer.
  *
+ * Designed with Apple Design principles:
+ * - Inset Grouped layout matching macOS System Settings.
+ * - Fluid status badges, interactive model cards, and tactile feedback.
+ * - Smooth spring-like open/close transitions for inline editors.
+ *
  * @module dsh-reasoning-setup/client/EffortPanel
  */
 
@@ -223,16 +228,16 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
       <p className={styles.pageHint}>{t('pageHint')}</p>
       {status === 'loading' && <p className={styles.scanStatus}>{t('scanPending')}</p>}
       {status === 'error' && (
-        <p className={styles.scanError}>
-          {t('scanError', { message: error ?? '' })}
-          {' '}
+        <div className={styles.scanError}>
+          <span>{t('scanError', { message: error ?? '' })}</span>
           <Button variant="outline" size="sm" onClick={() => { void rescan() }}>{t('retry')}</Button>
-        </p>
+        </div>
       )}
       {notice !== null && status === 'ready' && <p className={styles.scanStatus}>{notice}</p>}
       {status === 'ready' && report !== undefined && (
         <>
           <div className={styles.summaryBar}>
+            <span className={styles.statusDot} />
             {report.providers.length === 0
               ? <span className={styles.summaryOk}>{t('noProviders')}</span>
               : missing > 0
@@ -251,98 +256,103 @@ export function EffortPanel(props: EffortPanelProps): ReactNode {
               {provider.note === undefined ? null : (
                 <p className={styles.groupNote}>{t('routeError', { message: provider.note })}</p>
               )}
-              {provider.models.map((model: ReasoningModelView) => (
-                <div key={model.id}>
-                  <div className={styles.modelRow}>
-                    <span className={styles.modelName} title={model.id}>{model.name}</span>
-                    <span className={styles.modelMeta}>
-                      {model.note === undefined ? null : (
-                        <span className={styles.chip} title={model.note}>{t('modelNote', { message: model.note })}</span>
-                      )}
-                      {model.hasReasoning
-                        ? (
-                          <span className={`${styles.chip} ${styles.chipOk}`}>
-                            {t('modelSupported', { levels: model.efforts.join(' / ') })}
-                          </span>
-                        )
-                        : <span className={`${styles.chip} ${styles.chipMissing}`}>{t('modelMissing')}</span>}
-                      {model.defaultEffort === undefined ? null : (
-                        <span className={styles.chip}>{t('modelDefault', { level: model.defaultEffort })}</span>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!model.editable || saving}
-                        onClick={() => { editor?.model.id === model.id ? closeEditor() : openEditor(provider.id, model) }}
-                      >
-                        {model.declaredLevels === undefined ? t('edit') : t('editActive')}
-                      </Button>
-                    </span>
-                  </div>
-                  {editor?.provider === provider.id && editor.model.id === model.id && (
-                    <div className={styles.editor}>
-                      <div className={styles.editorHead}>
-                        <span className={styles.groupTitle}>{t('editorTitle', { model: model.name })}</span>
-                      </div>
-                      <p className={styles.editorHint}>{t('editorHint')}</p>
-                      {model.declaredLevels === undefined ? null : (
-                        <p className={styles.editorHint}>{t('editorDeclaredHint')}</p>
-                      )}
-                      <div className={styles.levelTable}>
-                        {report.levels.map(level => {
-                          const box = editor.boxes[level]
-                          return (
-                            <label className={styles.levelRow} key={level}>
-                              <input
-                                type="checkbox"
-                                className={styles.levelCheck}
-                                checked={box?.on ?? false}
-                                onChange={(event) => { toggleLevel(level, event.currentTarget.checked) }}
-                              />
-                              <span className={styles.levelName}>{level}</span>
-                              <input
-                                type="text"
-                                className={styles.levelWire}
-                                value={box?.wire ?? ''}
-                                disabled={!(box?.on ?? false) || saving}
-                                placeholder={level === 'off' ? '—' : level}
-                                onChange={(event) => { editWire(level, event.currentTarget.value) }}
-                              />
-                            </label>
-                          )
-                        })}
-                      </div>
-                      <label className={styles.formatRow}>
-                        <span>{t('formatLabel')}</span>
-                        <select
-                          className={styles.formatSelect}
-                          value={editor.format}
-                          disabled={saving}
-                          onChange={(event) => {
-                            const value = event.currentTarget.value
-                            setEditor(current => current === undefined ? undefined : { ...current, format: value })
-                          }}
-                        >
-                          <option value="">{t('formatInherit')}</option>
-                          {report.formats.map(format => <option key={format} value={format}>{format}</option>)}
-                        </select>
-                      </label>
-                      {editError === null ? null : <p className={styles.editorError}>{editError}</p>}
-                      <div className={styles.editorActions}>
-                        <Button variant="primary" size="sm" disabled={saving} onClick={() => { void save() }}>
-                          {saving ? t('saving') : t('save')}
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled={saving} onClick={closeEditor}>{t('cancel')}</Button>
-                        {model.declaredLevels === undefined && model.declaredFormat === undefined ? null : (
-                          <Button variant="outline" size="sm" disabled={saving} onClick={() => { void remove() }}>
-                            {t('removeDeclared')}
+              <div className={styles.groupCard}>
+                {provider.models.map((model: ReasoningModelView) => {
+                  const isEditing = editor?.provider === provider.id && editor.model.id === model.id
+                  return (
+                    <div className={styles.modelItem} key={model.id}>
+                      <div className={`${styles.modelRow}${isEditing ? ` ${styles.modelRowActive}` : ''}`}>
+                        <span className={styles.modelName} title={model.id}>{model.name}</span>
+                        <span className={styles.modelMeta}>
+                          {model.note === undefined ? null : (
+                            <span className={styles.chip} title={model.note}>{t('modelNote', { message: model.note })}</span>
+                          )}
+                          {model.hasReasoning
+                            ? (
+                              <span className={`${styles.chip} ${styles.chipOk}`}>
+                                {t('modelSupported', { levels: model.efforts.join(' / ') })}
+                              </span>
+                            )
+                            : <span className={`${styles.chip} ${styles.chipMissing}`}>{t('modelMissing')}</span>}
+                          {model.defaultEffort === undefined ? null : (
+                            <span className={`${styles.chip} ${styles.chipDefault}`}>{t('modelDefault', { level: model.defaultEffort })}</span>
+                          )}
+                          <Button
+                            variant={isEditing ? 'ghost' : 'outline'}
+                            size="sm"
+                            disabled={!model.editable || saving}
+                            onClick={() => { isEditing ? closeEditor() : openEditor(provider.id, model) }}
+                          >
+                            {model.declaredLevels === undefined ? t('edit') : t('editActive')}
                           </Button>
-                        )}
+                        </span>
                       </div>
+                      {isEditing && (
+                        <div className={styles.editor}>
+                          <div className={styles.editorHead}>
+                            <span className={styles.groupTitle}>{t('editorTitle', { model: model.name })}</span>
+                          </div>
+                          <p className={styles.editorHint}>{t('editorHint')}</p>
+                          {model.declaredLevels === undefined ? null : (
+                            <p className={styles.editorHint}>{t('editorDeclaredHint')}</p>
+                          )}
+                          <div className={styles.levelTable}>
+                            {report.levels.map(level => {
+                              const box = editor.boxes[level]
+                              return (
+                                <label className={styles.levelRow} key={level}>
+                                  <input
+                                    type="checkbox"
+                                    className={styles.levelCheck}
+                                    checked={box?.on ?? false}
+                                    onChange={(event) => { toggleLevel(level, event.currentTarget.checked) }}
+                                  />
+                                  <span className={styles.levelName}>{level}</span>
+                                  <input
+                                    type="text"
+                                    className={styles.levelWire}
+                                    value={box?.wire ?? ''}
+                                    disabled={!(box?.on ?? false) || saving}
+                                    placeholder={level === 'off' ? '—' : level}
+                                    onChange={(event) => { editWire(level, event.currentTarget.value) }}
+                                  />
+                                </label>
+                              )
+                            })}
+                          </div>
+                          <label className={styles.formatRow}>
+                            <span>{t('formatLabel')}</span>
+                            <select
+                              className={styles.formatSelect}
+                              value={editor.format}
+                              disabled={saving}
+                              onChange={(event) => {
+                                const value = event.currentTarget.value
+                                setEditor(current => current === undefined ? undefined : { ...current, format: value })
+                              }}
+                            >
+                              <option value="">{t('formatInherit')}</option>
+                              {report.formats.map(format => <option key={format} value={format}>{format}</option>)}
+                            </select>
+                          </label>
+                          {editError === null ? null : <p className={styles.editorError}>{editError}</p>}
+                          <div className={styles.editorActions}>
+                            <Button variant="primary" size="sm" disabled={saving} onClick={() => { void save() }}>
+                              {saving ? t('saving') : t('save')}
+                            </Button>
+                            <Button variant="ghost" size="sm" disabled={saving} onClick={closeEditor}>{t('cancel')}</Button>
+                            {model.declaredLevels === undefined && model.declaredFormat === undefined ? null : (
+                              <Button variant="outline" size="sm" disabled={saving} onClick={() => { void remove() }}>
+                                {t('removeDeclared')}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                  )
+                })}
+              </div>
             </section>
           ))}
         </>

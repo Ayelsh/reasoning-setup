@@ -1,6 +1,6 @@
 {
   "name": "dsh-reasoning-setup",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Reasoning-effort setup page for DeepSeek Harness: detects models that expose no thinking levels and edits their llm-pi-ai reasoningEfforts declaration from a settings page",
@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "prepare": "node scripts/build.mjs",
     "verify": "node scripts/build.mjs && node scripts/verify.mjs && node scripts/client-smoke.mjs",
     "client-smoke": "node scripts/client-smoke.mjs"
   },
