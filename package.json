@@ -1,6 +1,6 @@
 {
   "name": "dsh-reasoning-setup",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Reasoning-effort setup page for DeepSeek Harness: detects models that expose no thinking levels and edits their llm-pi-ai reasoningEfforts declaration from a settings page",
